@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Webflow Designer Extension",
+  "version": "1.0",
+  "description": "Interact with Webflow Designer: Quick publish with sound notification and custom attribute toggle icons",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.webflow.com/*"
+  ],
+  "background": {
+    "service_worker": "background/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://webflow.com/design/*"],
+      "js": ["utils/webflow-api.js", "content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  },
+  "commands": {
+    "publish-site": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+U",
+        "mac": "Command+Shift+U"
+      },
+      "description": "Publish Webflow site"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/sounds/complete.mp3"],
+      "matches": ["https://*.webflow.com/*"]
+    }
+  ]
+}

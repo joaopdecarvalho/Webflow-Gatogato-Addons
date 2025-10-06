@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webflow Designer Extension</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="popup-container">
+        <header>
+            <h1>Webflow Designer Extension</h1>
+            <p class="subtitle">Quick publish & attribute toggle tools</p>
+        </header>
+        
+        <section class="actions">
+            <button id="publish-button" class="primary-btn">
+                <span class="icon">🚀</span>
+                Publish Website
+            </button>
+            <p id="status-message" class="status"></p>
+        </section>
+        
+        <section class="settings">
+            <h2>Settings</h2>
+            
+            <div class="setting-item">
+                <label for="sound-toggle">
+                    <span>Enable completion sound</span>
+                    <input type="checkbox" id="sound-toggle" checked>
+                    <span class="toggle-switch"></span>
+                </label>
+            </div>
+            
+            <div class="setting-item">
+                <label for="target-attribute">Target Attribute:</label>
+                <input 
+                    type="text" 
+                    id="target-attribute" 
+                    placeholder="data-show-in-designer"
+                    value="data-show-in-designer"
+                >
+            </div>
+            
+            <div class="setting-item">
+                <label for="toggle-attribute">Toggle Attribute:</label>
+                <input 
+                    type="text" 
+                    id="toggle-attribute" 
+                    placeholder="data-show-in-designer"
+                    value="data-show-in-designer"
+                >
+            </div>
+            
+            <button id="save-settings" class="secondary-btn">Save Settings</button>
+            <button id="refresh-buttons" class="secondary-btn">Refresh Buttons</button>
+        </section>
+        
+        <footer>
+            <p class="shortcut-info">
+                Keyboard shortcut: <strong>Ctrl+Shift+U</strong> (⌘+Shift+U on Mac)
+            </p>
+        </footer>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>

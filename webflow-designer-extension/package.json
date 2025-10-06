@@ -1,0 +1,23 @@
+{
+  "name": "webflow-designer-extension",
+  "version": "1.0.0",
+  "description": "A Chrome extension to enhance the Webflow Designer with quick publish shortcuts, completion sounds, and custom attribute toggle buttons.",
+  "main": "src/background/background.js",
+  "scripts": {
+    "build": "echo 'No build process needed - Load directly in Chrome'",
+    "dev": "echo 'Load unpacked extension from src/ folder in Chrome'"
+  },
+  "keywords": [
+    "webflow",
+    "chrome-extension",
+    "designer",
+    "publish",
+    "productivity"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/webflow-designer-extension"
+  }
+}
