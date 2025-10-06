@@ -1,0 +1,434 @@
+// Content script for Webflow Designer Extension
+// Runs in the context of the Webflow Designer page
+
+console.log('🚀 Webflow Designer Extension: Content script loaded');
+console.log('📍 Current URL:', window.location.href);
+console.log('📍 Page ready state:', document.readyState);
+
+// Configuration
+const CONFIG = {
+  targetAttribute: 'data-show-in-designer',
+  toggleAttribute: 'data-show-in-designer',
+  iconHTML: '👁️',
+  checkInterval: 2000,
+  soundEnabled: true,
+  searchTimeLimit: 10000 // Stop searching after 10 seconds
+};
+
+// Track initialization time
+let initTime = Date.now();
+let searchTimedOut = false;
+
+console.log('⚙️ Initial CONFIG:', CONFIG);
+
+// Initialize the extension
+function init() {
+  console.log('🔧 Initializing extension...');
+  console.log('📍 Current URL:', window.location.href);
+  console.log('📍 Page title:', document.title);
+  
+  // Log available window properties to find Webflow API
+  console.log('🔍 Checking for Webflow APIs in window object...');
+  const webflowKeys = Object.keys(window).filter(key => 
+    key.toLowerCase().includes('webflow') || 
+    key.toLowerCase().includes('designer') ||
+    key.toLowerCase().includes('canvas')
+  );
+  console.log('🔑 Found keys:', webflowKeys);
+  
+  // Log all iframes
+  const iframes = document.querySelectorAll('iframe');
+  console.log(`🖼️ Found ${iframes.length} iframes on page:`, 
+    Array.from(iframes).map(iframe => ({
+      name: iframe.name,
+      id: iframe.id,
+      src: iframe.src,
+      className: iframe.className
+    }))
+  );
+  
+  // Load settings from storage
+  chrome.storage.sync.get(['soundEnabled', 'targetAttribute', 'toggleAttribute'], (result) => {
+    console.log('💾 Loaded settings from storage:', result);
+    
+    if (result.soundEnabled !== undefined) CONFIG.soundEnabled = result.soundEnabled;
+    if (result.targetAttribute) CONFIG.targetAttribute = result.targetAttribute;
+    if (result.toggleAttribute) CONFIG.toggleAttribute = result.toggleAttribute;
+    
+    console.log('⚙️ Updated CONFIG:', CONFIG);
+    
+    // Start observing for elements
+    observeForElements();
+    
+    // Initial scan with delay to let page load
+    console.log('🔍 Scheduling initial scan for elements in 3 seconds...');
+    setTimeout(() => {
+      console.log('🔍 Starting initial scan for elements...');
+      addToggleButtonsToElements();
+    }, 3000);
+    
+    // Additional scan after more time
+    setTimeout(() => {
+      console.log('🔍 Starting delayed scan for elements...');
+      addToggleButtonsToElements();
+    }, 6000);
+  });
+}
+
+// Add toggle buttons to elements that have the target attribute
+function addToggleButtonsToElements() {
+  // Try to access Webflow's internal designer API
+  // The designer exposes its state through window objects
+  let webflowDesigner = null;
+  
+  // Try different ways to access the Webflow Designer API
+  if (window.Webflow) {
+    webflowDesigner = window.Webflow;
+  } else if (window.__WEBFLOW_DESIGNER__) {
+    webflowDesigner = window.__WEBFLOW_DESIGNER__;
+  } else if (window.webflow) {
+    webflowDesigner = window.webflow;
+  }
+  
+  if (webflowDesigner) {
+    console.log('✅ Found Webflow Designer API:', webflowDesigner);
+    console.log('📋 Available properties:', Object.keys(webflowDesigner));
+  } else {
+    console.log('⚠️ Webflow Designer API not found in window object');
+  }
+  
+  // Try the canvas iframe approach as fallback
+  const canvasFrame = document.querySelector('iframe[name="preview-frame"]') || 
+                      document.querySelector('iframe.canvas-frame') ||
+                      document.querySelector('iframe#canvas') ||
+                      document.querySelector('iframe[src*="preview"]') ||
+                      Array.from(document.querySelectorAll('iframe')).find(iframe => {
+                        try {
+                          return iframe.contentDocument && iframe.contentDocument.body;
+                        } catch(e) {
+                          return false;
+                        }
+                      });
+  
+  if (!canvasFrame) {
+    console.log('⚠️ Canvas iframe not found yet. Available iframes:', document.querySelectorAll('iframe'));
+    return;
+  }
+  
+  let canvasDocument;
+  try {
+    canvasDocument = canvasFrame.contentDocument || canvasFrame.contentWindow.document;
+  } catch (e) {
+    console.error('❌ Cannot access canvas iframe:', e);
+    return;
+  }
+  
+  if (!canvasDocument || !canvasDocument.body) {
+    console.log('⚠️ Canvas document not accessible yet. Will retry...');
+    return;
+  }
+  
+  // Find all elements with the target attribute in the canvas
+  const selector = `[${CONFIG.targetAttribute}]`;
+  console.log('🔍 Searching for elements with selector:', selector);
+  console.log('📍 Searching in canvas iframe:', canvasFrame);
+  
+  const elements = canvasDocument.querySelectorAll(selector);
+  console.log(`✅ Found ${elements.length} elements with attribute "${CONFIG.targetAttribute}"`);
+  
+  if (elements.length > 0) {
+    console.log('📋 Elements found:', Array.from(elements).map(el => ({
+      tag: el.tagName,
+      id: el.id,
+      classes: el.className,
+      attribute: el.getAttribute(CONFIG.targetAttribute)
+    })));
+  }
+  
+  elements.forEach((element, index) => {
+    // Skip if button already added (check for marker data attribute)
+    if (element.hasAttribute('data-wf-ext-processed')) {
+      return;
+    }
+    
+    console.log(`🎯 Processing element ${index + 1}:`, element);
+    console.log(`   - Tag: ${element.tagName}`);
+    console.log(`   - ID: ${element.id}`);
+    console.log(`   - Classes: ${element.className}`);
+    console.log(`   - Current attribute value: ${element.getAttribute(CONFIG.targetAttribute)}`);
+    
+    // Mark as processed to prevent infinite loop
+    element.setAttribute('data-wf-ext-processed', 'true');
+    
+    // Create toggle button
+    console.log(`   ➕ Creating toggle button`);
+    const toggleBtn = createToggleButton(element, canvasDocument);
+    
+    // Position it absolutely within the element
+    const currentPosition = window.getComputedStyle(element).position;
+    if (currentPosition === 'static') {
+      element.style.position = 'relative';
+    }
+    element.appendChild(toggleBtn);
+    console.log(`   ✅ Toggle button added to element`);
+  });
+  
+  if (elements.length === 0) {
+    console.warn(`⚠️ No elements found with attribute "${CONFIG.targetAttribute}".`);
+    console.log(`💡 To add this attribute:`);
+    console.log(`   1. Select an element in Webflow Designer`);
+    console.log(`   2. Go to Element Settings → Custom Attributes`);
+    console.log(`   3. Add: ${CONFIG.targetAttribute} = true (or false)`);
+  }
+}
+
+// Create a toggle button for an element
+function createToggleButton(targetElement, canvasDocument) {
+  console.log('🔨 Creating button for element:', targetElement);
+  
+  // Create button in the same document as the target element
+  const doc = canvasDocument || document;
+  const button = doc.createElement('button');
+  button.className = 'wf-ext-toggle-btn';
+  button.innerHTML = CONFIG.iconHTML;
+  button.title = 'Toggle custom attribute';
+  
+  // Styling
+  Object.assign(button.style, {
+    position: 'absolute',
+    top: '5px',
+    right: '5px',
+    width: '24px',
+    height: '24px',
+    borderRadius: '50%',
+    border: '2px solid #146EF5',
+    background: 'white',
+    cursor: 'pointer',
+    fontSize: '12px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: '10000',
+    transition: 'all 0.2s ease'
+  });
+  
+  console.log('✅ Button created with styles');
+  
+  // Update button appearance based on current state
+  updateButtonState(button, targetElement);
+  
+  // Add click handler
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    console.log('🖱️ Button clicked!');
+    console.log('   - Element:', targetElement);
+    console.log('   - Current value:', targetElement.getAttribute(CONFIG.toggleAttribute));
+    
+    // Toggle the attribute between 'true' and 'false'
+    window.WebflowAPI.toggleCustomAttribute(
+      targetElement,
+      CONFIG.toggleAttribute,
+      'true',
+      'false'
+    );
+    
+    console.log('   - New value:', targetElement.getAttribute(CONFIG.toggleAttribute));
+    
+    // Update button appearance
+    updateButtonState(button, targetElement);
+  });
+  
+  // Hover effects
+  button.addEventListener('mouseenter', () => {
+    button.style.transform = 'scale(1.1)';
+    button.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+  });
+  
+  button.addEventListener('mouseleave', () => {
+    button.style.transform = 'scale(1)';
+    button.style.boxShadow = 'none';
+  });
+  
+  return button;
+}
+
+// Update button appearance based on toggle state
+function updateButtonState(button, element) {
+  const currentState = element.getAttribute(CONFIG.toggleAttribute);
+  console.log(`🎨 Updating button state. Current value: "${currentState}"`);
+  
+  if (currentState === 'true') {
+    button.style.background = '#146EF5';
+    button.style.color = 'white';
+    button.title = 'Hide in designer (click to toggle)';
+    console.log('   ✅ Button set to ACTIVE state (blue)');
+  } else {
+    button.style.background = 'white';
+    button.style.color = '#146EF5';
+    button.title = 'Show in designer (click to toggle)';
+    console.log('   ⚪ Button set to INACTIVE state (white)');
+  }
+}
+
+// Observe DOM for new elements
+function observeForElements() {
+  console.log('👀 Starting DOM observer...');
+  
+  // Observe both the main document and the canvas iframe
+  const observeDocument = (doc, label) => {
+    const observer = new MutationObserver((mutations) => {
+      let shouldCheck = false;
+      
+      mutations.forEach((mutation) => {
+        // Only check if new nodes are added that might contain target elements
+        if (mutation.addedNodes.length > 0) {
+          // Check if any added nodes or their children might have our target attribute
+          for (let node of mutation.addedNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              // Skip our own extension elements
+              if (node.classList && (node.classList.contains('wf-ext-toggle-btn') || node.hasAttribute('data-wf-ext-processed'))) {
+                continue;
+              }
+              // Check if the node or its children might have the target attribute
+              if (node.hasAttribute && (node.hasAttribute(CONFIG.targetAttribute) || node.querySelector(`[${CONFIG.targetAttribute}]`))) {
+                shouldCheck = true;
+                break;
+              }
+            }
+          }
+        }
+      });
+      
+      if (shouldCheck) {
+        console.log(`🔄 DOM changed in ${label}, checking for new elements...`);
+        addToggleButtonsToElements();
+      }
+    });
+    
+    // Start observing
+    observer.observe(doc.body || doc.documentElement, {
+      childList: true,
+      subtree: true
+    });
+    
+    console.log(`✅ DOM observer started for ${label}`);
+    return observer;
+  };
+  
+  // Observe main document
+  observeDocument(document, 'main document');
+  
+  // Try to observe canvas iframe
+  const tryObserveCanvas = () => {
+    const canvasFrame = document.querySelector('iframe[name="preview-frame"]') || 
+                        document.querySelector('iframe.canvas-frame') ||
+                        document.querySelector('iframe#canvas') ||
+                        document.querySelector('iframe[src*="preview"]');
+    
+    if (canvasFrame) {
+      try {
+        const canvasDocument = canvasFrame.contentDocument || canvasFrame.contentWindow.document;
+        if (canvasDocument && canvasDocument.body) {
+          observeDocument(canvasDocument, 'canvas iframe');
+          console.log('✅ Canvas iframe observer started');
+          return true;
+        }
+      } catch (e) {
+        console.warn('⚠️ Could not observe canvas iframe:', e);
+      }
+    }
+    return false;
+  };
+  
+  // Try immediately
+  if (!tryObserveCanvas()) {
+    // If canvas not ready, retry periodically
+    const retryInterval = setInterval(() => {
+      if (tryObserveCanvas()) {
+        clearInterval(retryInterval);
+      }
+    }, 1000);
+  }
+  
+  // Also periodically check for new elements
+  setInterval(() => {
+    console.log('⏰ Periodic check for new elements...');
+    addToggleButtonsToElements();
+  }, CONFIG.checkInterval);
+}
+
+// Handle publish site command
+async function handlePublishSite() {
+  try {
+    console.log('📤 Publishing site...');
+    
+    // Notify background script
+    chrome.runtime.sendMessage({ action: 'publish-started' });
+    
+    // Trigger publish via Webflow API utility
+    const result = await window.WebflowAPI.publishSite();
+    
+    console.log('✅ Publish result:', result);
+    
+    // Play completion sound
+    if (CONFIG.soundEnabled) {
+      console.log('🔊 Playing completion sound...');
+      playCompletionSound();
+    }
+    
+    // Notify background script
+    chrome.runtime.sendMessage({ action: 'publish-complete' });
+    
+  } catch (error) {
+    console.error('❌ Publish error:', error);
+    chrome.runtime.sendMessage({ 
+      action: 'publish-error', 
+      error: error.message 
+    });
+  }
+}
+
+// Play completion sound
+function playCompletionSound() {
+  try {
+    const audio = new Audio(chrome.runtime.getURL('assets/sounds/complete.mp3'));
+    audio.volume = 0.5;
+    audio.play().catch(err => {
+      console.error('Error playing sound:', err);
+    });
+  } catch (error) {
+    console.error('Error creating audio:', error);
+  }
+}
+
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('📨 Message received from background:', request);
+  
+  if (request.action === 'publish-site') {
+    console.log('🚀 Publish command received');
+    handlePublishSite();
+    sendResponse({ status: 'publishing' });
+  } else if (request.action === 'play-completion-sound') {
+    console.log('🔊 Play sound command received');
+    playCompletionSound();
+    sendResponse({ status: 'sound-played' });
+  } else if (request.action === 'refresh-buttons') {
+    console.log('🔄 Refresh buttons command received');
+    addToggleButtonsToElements();
+    sendResponse({ status: 'refreshed' });
+  }
+  
+  return true; // Keep message channel open
+});
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+  console.log('⏳ DOM still loading, waiting for DOMContentLoaded...');
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  console.log('✅ DOM already loaded, initializing now...');
+  init();
+}

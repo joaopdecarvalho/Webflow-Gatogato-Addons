@@ -145,8 +145,81 @@ webflow-designer-extension/
 
 1. Edit the files in the `src/` directory
 2. Go to `chrome://extensions/`
-3. Click the refresh icon on the extension card
+3. **Click the refresh/reload icon** on the extension card (🔄)
+   - You do NOT need to remove and re-add the extension
+   - Just click the circular arrow icon next to the on/off toggle
 4. Reload any Webflow Designer pages to see changes
+
+**Note:** After clicking refresh in `chrome://extensions/`, the extension updates immediately. You only need to reload the Webflow page to apply the changes to that page.
+
+### Debugging
+
+The extension now includes comprehensive logging. To see debug output:
+
+#### For Content Script (runs on Webflow pages):
+1. Open a Webflow Designer page
+2. Open Chrome DevTools (`F12` or `Ctrl+Shift+I`)
+3. Go to the **Console** tab
+4. Look for messages with emojis like 🚀, 🔍, ✅, etc.
+
+**What to check:**
+- `🚀 Webflow Designer Extension: Content script loaded` - Confirms script is running
+- `🔍 Searching for elements with selector: [data-show-in-designer]` - Shows what it's looking for
+- `✅ Found X elements` - How many elements were found
+- `⚠️ No elements found` - Means no elements have the attribute
+
+#### For Background Script (service worker):
+1. Go to `chrome://extensions/`
+2. Find your extension
+3. Click **"service worker"** or **"Inspect views: service worker"**
+4. A DevTools window opens showing background script logs
+
+#### For Popup:
+1. Click the extension icon
+2. Right-click anywhere in the popup
+3. Select **Inspect**
+4. Check the Console tab
+
+### Quick Test
+
+To test if the extension is working:
+
+1. Open any webpage (even a blank page)
+2. Open DevTools (F12)
+3. In the Console, type:
+```javascript
+// Add test element
+const testDiv = document.createElement('div');
+testDiv.setAttribute('data-show-in-designer', 'true');
+testDiv.style.width = '200px';
+testDiv.style.height = '100px';
+testDiv.style.background = 'lightblue';
+testDiv.style.margin = '20px';
+testDiv.textContent = 'Test Element';
+document.body.appendChild(testDiv);
+```
+
+You should see a toggle button (👁️) appear on this element within 2 seconds.
+
+### Debug Log Reference
+
+Here's what the emoji indicators mean in the console:
+
+- 🚀 - Extension/feature initialization
+- 🔍 - Searching/scanning for elements
+- ✅ - Success/confirmation
+- ❌ - Error occurred
+- ⚠️ - Warning (e.g., no elements found)
+- 🎯 - Processing specific element
+- 🔨 - Creating/building something
+- 🖱️ - Click event
+- 🔄 - Refresh/update action
+- 📨 - Message received
+- 📤 - Message sent
+- 💾 - Storage operation
+- 🔊 - Sound/audio
+- 👀 - Observer/watcher
+- ⏰ - Periodic/scheduled action
 
 ### Debugging
 
@@ -156,20 +229,42 @@ webflow-designer-extension/
 
 ### Common Issues
 
+**Extension not loading:**
+- Check for errors in `chrome://extensions/` (click "Errors" button if it appears)
+- Make sure Developer mode is enabled
+- Try removing and re-adding the extension
+
 **Toggle buttons not appearing:**
+- Open DevTools Console (F12) and look for the debug messages
+- Check if you see `⚠️ No elements found with attribute "data-show-in-designer"`
 - Make sure elements have the correct attribute (default: `data-show-in-designer`)
-- Check the browser console for errors
+- Verify the attribute value is set (e.g., `data-show-in-designer="true"`)
 - Try clicking "Refresh Buttons" in the popup
+- Check if content script loaded: look for `🚀 Webflow Designer Extension: Content script loaded`
+
+**Keyboard shortcut not working:**
+- Verify you're on a Webflow Designer page (`webflow.com/design/...`)
+- Check `chrome://extensions/shortcuts` to see if the shortcut is registered
+- Try a different shortcut if there's a conflict
+- Look for `⌨️ Keyboard command received` in the background service worker console
 
 **Publish not working:**
 - Ensure you're on a Webflow Designer page (`webflow.com/design/...`)
 - Check that you have publish permissions for the site
 - The extension simulates clicking the publish button, so make sure it's visible
+- Check console for `❌ Publish button not found` error
 
 **Sound not playing:**
 - Ensure `complete.mp3` exists in `src/assets/sounds/`
 - Check that sound is enabled in settings
 - Browser may block autoplay - interact with the page first
+- Look for `🔊 Playing completion sound...` in console
+
+**Content script not loading:**
+- Check the manifest `content_scripts` matches setting
+- Verify the page URL matches the pattern in manifest.json
+- Look at `chrome://extensions/` for any errors
+- Check if scripts are being blocked by CSP (Content Security Policy)
 
 ## 🤝 Contributing
 

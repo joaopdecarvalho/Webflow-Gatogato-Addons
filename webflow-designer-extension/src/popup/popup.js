@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Send message to content script to publish
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0] && tabs[0].url.includes('webflow.com/design/')) {
+      if (tabs[0] && (tabs[0].url.includes('webflow.com/design/') || tabs[0].url.includes('.webflow.com'))) {
         chrome.tabs.sendMessage(tabs[0].id, { action: 'publish-site' }, (response) => {
           if (chrome.runtime.lastError) {
             statusMessage.textContent = 'Error: Make sure you are on a Webflow Designer page';
@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Refresh buttons handler
   refreshButtonsBtn.addEventListener('click', function() {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0] && tabs[0].url.includes('webflow.com/design/')) {
+      if (tabs[0] && (tabs[0].url.includes('webflow.com/design/') || tabs[0].url.includes('.webflow.com'))) {
         chrome.tabs.sendMessage(tabs[0].id, { action: 'refresh-buttons' }, (response) => {
           if (response) {
             statusMessage.textContent = 'Toggle buttons refreshed!';

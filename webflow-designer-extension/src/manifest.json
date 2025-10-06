@@ -16,7 +16,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://webflow.com/design/*"],
+      "matches": [
+        "https://webflow.com/design/*",
+        "https://*.webflow.com/*"
+      ],
       "js": ["utils/webflow-api.js", "content/content.js"],
       "run_at": "document_idle"
     }
