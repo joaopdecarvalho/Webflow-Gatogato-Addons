@@ -10,7 +10,7 @@ const CONFIG = {
   iconHTML: '👁️',
   checkInterval: 2000,
   soundEnabled: true,
-  searchTimeLimit: 15000, // Stop automatic searching after 15 seconds
+  searchTimeLimit: 4000, // Stop automatic searching after 4 seconds
   debugMode: true
 };
 
@@ -20,6 +20,51 @@ let searchTimedOut = false;
 let processedElements = new Set();
 let mutationDebounceTimer = null;
 const navigatorItemCache = new Map();
+let searchCompleted = false;
+const pendingRescanTimeouts = new Set();
+
+function clearPendingRescans() {
+  pendingRescanTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+  pendingRescanTimeouts.clear();
+}
+
+function scheduleForcedRescan(delay, reason) {
+  if (searchTimedOut || searchCompleted) {
+    return;
+  }
+
+  const timeoutId = setTimeout(() => {
+    pendingRescanTimeouts.delete(timeoutId);
+    addToggleButtonsToNavigator({ force: true, reason });
+  }, delay);
+
+  pendingRescanTimeouts.add(timeoutId);
+}
+
+function stopObservers() {
+  if (window._wfDomObserver) {
+    window._wfDomObserver.disconnect();
+    window._wfDomObserver = null;
+    debugLog('🛑 DOM observer stopped');
+  }
+
+  if (window._navigatorObserver) {
+    window._navigatorObserver.disconnect();
+    window._navigatorObserver = null;
+    debugLog('🛑 Navigator observer stopped');
+  }
+}
+
+function concludeSearch(reason = 'complete') {
+  if (searchCompleted) {
+    return;
+  }
+
+  debugLog(`🏁 Search concluded (${reason}).`);
+  searchCompleted = true;
+  clearPendingRescans();
+  stopObservers();
+}
 
 // Helper function for debug logging
 function debugLog(...args) {
@@ -63,11 +108,10 @@ async function init() {
   }, CONFIG.checkInterval);
   
   // Additional scans in the first few seconds
-  setTimeout(() => addToggleButtonsToNavigator(), 1000);
-  setTimeout(() => addToggleButtonsToNavigator(), 3000);
-  setTimeout(() => addToggleButtonsToNavigator(), 5000);
-  setTimeout(() => addToggleButtonsToNavigator(), 7000);
-  setTimeout(() => addToggleButtonsToNavigator(), 10000);
+  setTimeout(() => addToggleButtonsToNavigator(), 500);
+  setTimeout(() => addToggleButtonsToNavigator(), 1500);
+  setTimeout(() => addToggleButtonsToNavigator(), 2500);
+  setTimeout(() => addToggleButtonsToNavigator(), 3500);
   
   // Listen for messages from popup/background
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -93,6 +137,8 @@ async function init() {
       searchTimedOut = false;
       initTime = Date.now();
       processedElements.clear();
+      searchCompleted = false;
+      clearPendingRescans();
       console.log('🔄 Refreshing buttons...');
       addToggleButtonsToNavigator();
       sendResponse({ success: true });
@@ -106,6 +152,7 @@ function addToggleButtonsToNavigator(options = {}) {
 
   if (!force) {
     if (searchTimedOut) {
+      concludeSearch('time limit reached');
       return;
     }
 
@@ -113,11 +160,16 @@ function addToggleButtonsToNavigator(options = {}) {
       if (!searchTimedOut) {
         debugLog('⏱️ Search limit reached. Stopping automatic search.');
         searchTimedOut = true;
+        concludeSearch('time limit reached');
       }
       return;
     }
   } else {
     debugLog(`⏩ Force-running addToggleButtonsToNavigator (reason: ${reason})`);
+  }
+
+  if (!force && searchCompleted) {
+    return;
   }
 
   // Find the Navigator panel
@@ -152,11 +204,15 @@ function addToggleButtonsToNavigator(options = {}) {
   const canvasElements = canvasDoc.querySelectorAll(`[${CONFIG.targetAttribute}]`);
   
   if (canvasElements.length === 0) {
+    concludeSearch('no target elements found');
     return;
   }
   
   debugLog(`✅ Found ${canvasElements.length} elements with attribute "${CONFIG.targetAttribute}"`);
   debugLog(`   📊 Already processed: ${processedElements.size} elements`);
+  
+  let matchedElements = 0;
+  let missingNavigatorItems = 0;
   
   // Process each canvas element
   canvasElements.forEach((canvasElement, index) => {
@@ -202,6 +258,7 @@ function addToggleButtonsToNavigator(options = {}) {
     
     if (!navigatorItem) {
       debugLog(`   ❌ Navigator item NOT found for: ${elementKey}`);
+      missingNavigatorItems++;
       return;
     }
     
@@ -215,6 +272,7 @@ function addToggleButtonsToNavigator(options = {}) {
       placeButtonInNavigator(existingButton, navigatorItem, elementKey);
       updateButtonState(existingButton, canvasElement);
       processedElements.add(elementKey); // Track that we've seen this
+      matchedElements++;
       return;
     }
     
@@ -230,10 +288,17 @@ function addToggleButtonsToNavigator(options = {}) {
     
     // Mark as processed
     processedElements.add(elementKey);
+    matchedElements++;
     
     // Add button to Navigator item
     addButtonToNavigatorItem(navigatorItem, canvasElement, elementKey);
   });
+
+  if (matchedElements === canvasElements.length && missingNavigatorItems === 0) {
+    concludeSearch('all targets matched');
+  } else if (!searchTimedOut) {
+    searchCompleted = false;
+  }
 }
 
 // Expand only the parent elements that contain our target elements
@@ -332,20 +397,7 @@ function expandTreeNodesManually(navigatorPanel) {
   
   // If we expanded anything, do rescans
   if (expandedCount > 0) {
-    setTimeout(() => {
-      debugLog('🔄 Rescan after parent expansion (300ms)...');
-      addToggleButtonsToNavigator({ force: true, reason: 'parent expansion' });
-    }, 300);
-    
-    setTimeout(() => {
-      debugLog('🔄 Rescan after parent expansion (800ms)...');
-      addToggleButtonsToNavigator({ force: true, reason: 'parent expansion' });
-    }, 800);
-    
-    setTimeout(() => {
-      debugLog('🔄 Final rescan after parent expansion (1500ms)...');
-      addToggleButtonsToNavigator({ force: true, reason: 'parent expansion' });
-    }, 1500);
+    scheduleForcedRescan(350, 'parent expansion');
   }
   
   return expandedCount > 0;
@@ -854,7 +906,15 @@ function updateButtonState(button, element) {
 
 // Start observing DOM for changes
 function startObserving() {
+  if (window._wfDomObserver) {
+    return;
+  }
+
   const observer = new MutationObserver((mutations) => {
+    if (searchTimedOut || searchCompleted) {
+      return;
+    }
+
     const hasRelevantChanges = mutations.some(mutation => 
       mutation.addedNodes.length > 0 || 
       mutation.removedNodes.length > 0
@@ -864,6 +924,7 @@ function startObserving() {
       if (mutationDebounceTimer) {
         clearTimeout(mutationDebounceTimer);
       }
+      searchCompleted = false;
       
       mutationDebounceTimer = setTimeout(() => {
         debugLog('🔄 DOM changed, re-scanning...');
@@ -876,6 +937,7 @@ function startObserving() {
     childList: true,
     subtree: true
   });
+  window._wfDomObserver = observer;
   
   debugLog('👀 DOM observer started');
 }
@@ -889,6 +951,10 @@ function startNavigatorObserver(navigatorPanel) {
   debugLog('👁️ Starting Navigator panel observer...');
   
   window._navigatorObserver = new MutationObserver((mutations) => {
+    if (searchTimedOut || searchCompleted) {
+      return;
+    }
+
     const hasNewItems = mutations.some(mutation => {
       return Array.from(mutation.addedNodes).some(node => {
         if (node.nodeType === Node.ELEMENT_NODE) {
@@ -905,6 +971,7 @@ function startNavigatorObserver(navigatorPanel) {
       if (mutationDebounceTimer) {
         clearTimeout(mutationDebounceTimer);
       }
+      searchCompleted = false;
       
       mutationDebounceTimer = setTimeout(() => {
         debugLog('🌲 Navigator tree changed, re-scanning...');
